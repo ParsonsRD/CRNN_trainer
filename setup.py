@@ -1,11 +1,12 @@
 from setuptools import setup
 
 setup(
-    name='RNN',
+    name='crnn_trainer',
     version='0.1',
-    packages=[''],
+    packages=['crnn_trainer'],
     url='',
     license='None',
+    zip_safe=False,
     author='parsonsrd',
     author_email='',
     description=''
