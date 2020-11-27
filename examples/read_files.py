@@ -1,6 +1,4 @@
-
 import os
-os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
 
 from RNN_trainer import RNNtrainer
 from corsika_toy_iact.iact_array import IACTArray
