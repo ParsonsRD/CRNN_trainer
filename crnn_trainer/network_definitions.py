@@ -41,14 +41,16 @@ def create_recurrent_cnn(cnn_input_shape=(9, 40, 40, 1), hillas_input_shape=(9, 
     mult_1 = layers.multiply([input_mask, drop_2])
     # We can then mask and run our RNN
     mask_mult1 = layers.Masking(mask_value=0)(mult_1)
-    dense_c2 = layers.Bidirectional(layers.LSTM(hidden_nodes, activation='relu',
-                                                unroll=True, return_sequences=True))(mask_mult1)
+    dense_c2 = layers.LSTM(hidden_nodes, return_sequences=True)(mask_mult1)
+#    dense_c2 = layers.Bidirectional(layers.LSTM(hidden_nodes, activation='relu',
+#                                                unroll=True, return_sequences=True))(mask_mult1)
 
     # Then we have our Hillas input layer
     input_hillas = layers.Input(shape=hillas_input_shape)
     mask2 = layers.Masking(mask_value=0)(input_hillas)
-    dense_hillas_1 = layers.Bidirectional(layers.LSTM(hidden_nodes, return_sequences=True,
-                                                      activation="relu"))(mask2)
+    dense_hillas_1 = layers.LSTM(hidden_nodes, return_sequences=True)(mask2)
+    #layers.Bidirectional(layers.LSTM(hidden_nodes, return_sequences=True,
+                      #                                activation="relu"))(mask2)
     drop_4 = layers.TimeDistributed(layers.Dropout(rate=0.5))(dense_hillas_1)
 
     # Combine our CNN and hillas layers
@@ -59,8 +61,8 @@ def create_recurrent_cnn(cnn_input_shape=(9, 40, 40, 1), hillas_input_shape=(9, 
     mask_mult = layers.Masking(mask_value=0)(mult)
 
     # Finally feed all of this information into a final RNN
-    lstm_1 = layers.Bidirectional(layers.LSTM(hidden_nodes,
-                                              activation='relu', return_sequences=False))(mask_mult)
+    lstm_1 = layers.LSTM(hidden_nodes, return_sequences=False)(mask_mult)#layers.Bidirectional(layers.LSTM(hidden_nodes,
+                                              #activation='relu', return_sequences=False))(mask_mult)
     drop_3 = layers.Dropout(rate=0.5)(lstm_1)
     output = layers.Dense(2, activation='softmax')(drop_3)
 
