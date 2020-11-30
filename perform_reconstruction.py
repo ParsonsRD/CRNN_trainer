@@ -6,6 +6,8 @@ from ctapipe.image.hillas import hillas_parameters, HillasParameterizationError
 import numpy as np
 import astropy.units as u
 
+__all__ = ["hillas_parameterisation", "reconstruct_event", "perform_reconstruction"]
+
 
 # First up is our function to perform the image cleaning and Hillas parameterisation
 def hillas_parameterisation(image_event, geometry, tel_x, tel_y,

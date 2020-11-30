@@ -6,6 +6,7 @@ import astropy.units as u
 import keras
 from sklearn.model_selection import train_test_split
 
+__all__ = ["RNNtrainer"]
 
 class RNNtrainer:
 
@@ -89,10 +90,10 @@ class RNNtrainer:
     def load_processed_images(input_file):
         loaded = np.load(input_file)
 
-        return loaded["signal_images"], loaded["signal_header"], \
-               loaded["signal_hillas"], loaded["signal_reconstructed"], \
-               loaded["background_images"], loaded["background_header"], \
-               loaded["background_hillas"], loaded["background_reconstructed"]
+        return loaded["signal_images"].astype("float32"), loaded["signal_header"].astype("float32"), \
+               loaded["signal_hillas"].astype("float32"), loaded["signal_reconstructed"].astype("float32"), \
+               loaded["background_images"].astype("float32"), loaded["background_header"].astype("float32"), \
+               loaded["background_hillas"].astype("float32"), loaded["background_reconstructed"].astype("float32")
 
     def save_training_images(self, output_file):
 
@@ -128,16 +129,17 @@ class RNNtrainer:
 
     def train_network(self, output_file):
 
-        hillas_input = np.concatenate((self.signal_hillas, self.background_hillas))
-        image_input = np.concatenate((self.signal_images, self.background_images))
+        hillas_input = np.concatenate((self.signal_hillas, self.background_hillas)).astype("float32")
+        image_input = np.concatenate((self.signal_images, self.background_images)).astype("float32")
 
         image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
                                            image_input.shape[2], image_input.shape[3], 1))
         image_sum = np.sum(image_input.reshape((image_input.shape[0], image_input.shape[1],
-                                                image_input.shape[2] * image_input.shape[3])), axis=-1)
+                                                image_input.shape[2] * image_input.shape[3])), axis=-1, dtype="float32")
         image_input /= image_sum[..., np.newaxis, np.newaxis, np.newaxis]
         image_input[np.isnan(image_input)] = 0
         image_input[image_input < 0] = 0
+        print(image_sum)
 
         image_mask = image_sum > 0
         image_mask = image_mask.astype("int")

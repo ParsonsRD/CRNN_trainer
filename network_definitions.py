@@ -1,6 +1,8 @@
 from tensorflow import keras
 from tensorflow.keras import layers
 
+__all__ = ["create_hillas_rnn", "create_recurrent_cnn"]
+
 
 def create_hillas_rnn(input_shape=(9, 6), hidden_nodes=64):
     input_layer = keras.Input(shape=input_shape)
@@ -61,7 +63,8 @@ def create_recurrent_cnn(cnn_input_shape=(9, 40, 40, 1), hillas_input_shape=(9, 
     # Finally feed all of this information into a final RNN
     lstm_1 = layers.Bidirectional(layers.LSTM(hidden_nodes,
                                               activation='relu', return_sequences=False))(mask_mult)
-    drop_3 = layers.Dropout(rate=0.5)(lstm_1)
-    output = layers.Dense(2, activation='softmax')(drop_3)
+    #drop_3 = layers.Dropout(rate=0.5)(lstm_1)
+    dense = layers.Dense(hidden_nodes, activation='relu')(lstm_1)
+    output = layers.Dense(2, activation='softmax')(dense)
 
     return [input_layer, input_mask, input_hillas], output
