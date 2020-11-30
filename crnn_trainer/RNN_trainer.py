@@ -1,9 +1,9 @@
-import network_definitions
+import crnn_trainer.network_definitions
 import numpy as np
-from perform_reconstruction import perform_reconstruction
+from crnn_trainer.perform_reconstruction import perform_reconstruction
 from tqdm import tqdm
 import astropy.units as u
-import keras
+from tensorflow import keras
 from sklearn.model_selection import train_test_split
 
 __all__ = ["RNNtrainer"]
@@ -44,10 +44,10 @@ class RNNtrainer:
             # Perform Hillas intersection style reconstruction on all events
             geometry = self.corsika_reader.get_camera_geometry()
             reconstructed, hillas, selected = \
-                perform_reconstruction(images_loaded, geometry,
-                                       self.corsika_reader.telescope_x_positions*u.m,
-                                       self.corsika_reader.telescope_y_positions*u.m,
-                                       min_tels=min_tels, intensity_cut=intensity_cut, local_distance=local_distance)
+                crnn_trainer.perform_reconstruction(images_loaded, geometry,
+                                                    self.corsika_reader.telescope_x_positions*u.m,
+                                                    self.corsika_reader.telescope_y_positions*u.m,
+                                                    min_tels=min_tels, intensity_cut=intensity_cut, local_distance=local_distance)
 
             # Copy values into output arrays
             if images is None:
@@ -115,11 +115,12 @@ class RNNtrainer:
 
         if self.network_type is "CRNN":
             input_shape = (self.signal_images.shape[1], self.signal_images.shape[2], self.signal_images.shape[3], 1)
-            input_layer, output_layer = network_definitions.create_recurrent_cnn(input_shape,
-                                                                                 self.signal_hillas.shape[1:])
+            input_layer, output_layer = crnn_trainer.network_definitions.create_recurrent_cnn(input_shape,
+                                                                                              self.signal_hillas.shape[1:],
+                                                                                              hidden_nodes=32)
 
         if self.network_type is "HillasRNN":
-            input_layer, output_layer = network_definitions.create_hillas_rnn(self.signal_hillas.shape[1:])
+            input_layer, output_layer = crnn_trainer.network_definitions.create_hillas_rnn(self.signal_hillas.shape[1:])
 
         sgd = keras.optimizers.Adam(lr=0.0005)
         model = keras.Model(inputs=input_layer, outputs=output_layer)
@@ -164,7 +165,7 @@ class RNNtrainer:
         if self.network_type == "HillasRNN":
             hillas_input, val_hillas_input, target, val_target = train_test_split(hillas_input, target, test_size=0.2)
             fit = self.network.fit([hillas_input], target, epochs=1000,
-                                   batch_size=100, validation_data=([val_hillas_input], val_target),
+                                   batch_size=1000, validation_data=([val_hillas_input], val_target),
                                    shuffle=True,
                                    callbacks=[reduce_lr, stopping])
 
@@ -174,5 +175,7 @@ class RNNtrainer:
                 train_test_split(image_input, image_mask, hillas_input, target, test_size=0.2)
 
             fit = self.network.fit([image_input, image_mask, hillas_input], target, epochs=1000,
-                                   batch_size=100, validation_split=0.2, shuffle=True,
+                                   batch_size=1000, 
+                                   validation_data=([val_image_input, val_image_mask, val_hillas_input], val_target), 
+                                   shuffle=True,
                                    callbacks=[reduce_lr, stopping])
