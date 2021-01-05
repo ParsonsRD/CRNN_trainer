@@ -1,7 +1,7 @@
-from tensorflow import keras
-from tensorflow.keras import layers
+import keras
+from keras import layers
 
-__all__ = ["create_hillas_rnn", "create_recurrent_cnn"]
+__all__ = ["create_hillas_rnn", "create_recurrent_cnn", "create_denoising_autoencoder"]
 
 
 def create_hillas_rnn(input_shape=(9, 6), hidden_nodes=64):
@@ -69,3 +69,25 @@ def create_recurrent_cnn(cnn_input_shape=(9, 40, 40, 1), hillas_input_shape=(9, 
     output = layers.Dense(2, activation='softmax')(drop_3)
 
     return [input_layer, input_mask, input_hillas], output
+
+
+def create_denoising_autoencoder(input_shape=(40, 40, 1), hidden_nodes=64, filters=20):
+    # Create the model
+    input_layer = keras.Input(shape=input_shape)
+    x = layers.Conv2D(filters=filters, kernel_size=(3, 3), activation='relu', padding='same')(input_layer)
+    x = layers.MaxPooling2D(pool_size=(2, 2), padding='same')(x)
+    x = layers.Conv2D(filters=filters/2, kernel_size=(3, 3), activation='relu', padding='same')(x)
+    #x = layers.MaxPooling2D(pool_size=(2, 2), padding='same')(x)
+    #x = layers.Conv2D(filters=filters/4, kernel_size=(3, 3), activation='relu', padding='same')(x)
+    encoded = layers.MaxPooling2D(pool_size=(2, 2), padding='same')(x)
+
+    # decoding
+    x = layers.Conv2D(filters=filters/4, kernel_size=(3, 3), activation='relu', padding='same')(encoded)
+    x = layers.UpSampling2D(size=(2, 2))(x)
+    #x = layers.Conv2D(filters=filters/2, kernel_size=(3, 3), activation='relu', padding='same')(x)
+    #x = layers.UpSampling2D(size=(2, 2))(x)
+    x = layers.Conv2D(filters=filters, kernel_size=(3, 3), activation='relu', padding='same')(x)  # <= padding='valid'!
+    x = layers.UpSampling2D(size=(2, 2))(x)
+    decoded = layers.Conv2D(filters=1, kernel_size=(3, 3), activation='relu', padding='same')(x)
+
+    return input_layer, decoded
