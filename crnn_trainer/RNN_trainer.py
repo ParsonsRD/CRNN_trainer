@@ -5,6 +5,9 @@ from tqdm import tqdm
 import astropy.units as u
 import keras
 from sklearn.model_selection import train_test_split
+from sparse import COO
+import sparse
+import pickle
 
 __all__ = ["RNNtrainer"]
 
@@ -30,7 +33,7 @@ class RNNtrainer:
 
             # Load up our images and header from the saved files
             loaded = np.load(file_name)
-            images_loaded = loaded["images"]
+            images_loaded = loaded["images"].astype("float32")
 
             # Check to see if there are any images that are empty
             image_shape = images_loaded.shape
@@ -53,12 +56,12 @@ class RNNtrainer:
 
             # Copy values into output arrays
             if images is None:
-                images = images_loaded[selected]
+                images = COO.from_numpy(images_loaded[selected])
                 header = header_loaded[selected]
                 hillas_parameters = hillas
                 reconstructed_parameters = reconstructed
             else:
-                images = np.concatenate((images, images_loaded[selected]), axis=0)
+                images = sparse.concatenate((images,  COO.from_numpy(images_loaded[selected])), axis=0)
                 header = np.concatenate((header, header_loaded[selected]), axis=0)
                 hillas_parameters = np.concatenate((hillas_parameters, hillas), axis=0)
                 reconstructed_parameters = np.concatenate((reconstructed_parameters, reconstructed), axis=0)
@@ -84,22 +87,19 @@ class RNNtrainer:
     def save_processed_images(output_file,  signal_images, signal_header, signal_hillas, signal_reconstructed,
                               background_images, background_header, background_hillas, background_reconstructed):
 
-        np.savez_compressed(output_file, signal_images=signal_images,
-                            signal_header=signal_header,signal_hillas=signal_hillas,
-                            signal_reconstructed=signal_reconstructed,
-                            background_images=background_images,
-                            background_header=background_header, background_hillas=background_hillas,
-                            background_reconstructed=background_reconstructed)
+        data = [signal_images, signal_header, signal_hillas, signal_reconstructed,
+                background_images, background_header, background_hillas, background_reconstructed]
+
+        print(signal_images.shape)
+        with open(output_file, "wb") as f:
+            pickle.dump(data, f)
+            f.close()
 
     # Load processed events to be used for training
     @staticmethod
     def load_processed_images(input_file):
-        loaded = np.load(input_file)
-
-        return loaded["signal_images"].astype("float32"), loaded["signal_header"].astype("float32"), \
-               loaded["signal_hillas"].astype("float32"), loaded["signal_reconstructed"].astype("float32"), \
-               loaded["background_images"].astype("float32"), loaded["background_header"].astype("float32"), \
-               loaded["background_hillas"].astype("float32"), loaded["background_reconstructed"].astype("float32")
+        with open(input_file, "rb") as f:
+            return pickle.load(f)
 
     def save_training_images(self, output_file):
 
@@ -168,15 +168,14 @@ class RNNtrainer:
                 yield hillas_input, target
             elif self.network_type == "CRNN":
                 # For CRNN we need to use our image input
-                image_input = np.concatenate((self.signal_images[signal_selection],
-                                              self.background_images[background_selection]))
+                image_input = np.concatenate((self.signal_images[signal_selection].todense(),
+                                              self.background_images[background_selection].todense()))
 
                 image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
                                                    image_input.shape[2], image_input.shape[3], 1))
                 # Normalise the images to peak at 1
                 image_sum = np.max(image_input.reshape((image_input.shape[0], image_input.shape[1],
-                                                        image_input.shape[2] * image_input.shape[3])), axis=-1,
-                                   dtype="float32")
+                                                        image_input.shape[2] * image_input.shape[3])), axis=-1)
                 image_input /= image_sum[..., np.newaxis, np.newaxis, np.newaxis]
                 image_input[np.isnan(image_input)] = 0
                 image_input[image_input < 0] = 0
@@ -192,7 +191,7 @@ class RNNtrainer:
                 index = 0
 
     # Train our chosen network
-    def train_network(self, output_file, batch_size = 1000):
+    def train_network(self, output_file, batch_size=1000):
 
         print("Training", self.network_type, "network with", len(self.signal_hillas), "signal events and",
               len(self.background_hillas), "background events")
@@ -208,9 +207,10 @@ class RNNtrainer:
         total_length = (len(self.signal_hillas) + len(self.background_hillas))
         steps = total_length / batch_size
 
-        fit = self.network.fit(self.generate_image(batch_size=batch_size),
+        fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-20,
-                               validation_data=self.generate_training_image(batch_size=batch_size), validation_steps=20,
+                               validation_data=self.generate_training_image(batch_size=batch_size),
+                               validation_steps=20,
                                epochs=100, callbacks=[reduce_lr, stopping], shuffle=True)
 
         self.network.save_weights(output_file)
@@ -239,6 +239,7 @@ class RNNtrainer:
         image_mask = image_sum > 0
         image_mask = image_mask.astype("int")
 
+        prediction = None
         if self.network_type == "HillasRNN":
             prediction = self.network.predict([hillas_input])
         elif self.network_type == "CRNN":
