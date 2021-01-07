@@ -80,7 +80,7 @@ class RNNtrainer:
         print("Reading background files...")
         self.background_images, self.background_header, self.background_hillas, self.background_reconstructed = \
             self.read_and_process(background_files, min_tels=min_tels, intensity_cut=intensity_cut,
-                                  local_distance=local_distance)
+                                  local_distance=local_distance, **kwargs)
 
     # Save processed images which can be used for input to network training
     @staticmethod
