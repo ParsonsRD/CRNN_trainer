@@ -181,7 +181,7 @@ class RNNtrainer:
                 image_input[image_input < 0] = 0
 
                 # Finally create mask for empty images
-                image_mask = image_sum > 0
+                image_mask = image_sum != 0
                 image_mask = image_mask.astype("int")
 
                 yield [image_input, image_mask, hillas_input], target
@@ -191,7 +191,7 @@ class RNNtrainer:
                 index = 0
 
     # Train our chosen network
-    def train_network(self, output_file, batch_size=1000):
+    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2):
 
         print("Training", self.network_type, "network with", len(self.signal_hillas), "signal events and",
               len(self.background_hillas), "background events")
@@ -207,14 +207,18 @@ class RNNtrainer:
         logger = keras.callbacks.CSVLogger("log_" + output_file + ".csv",
                                            separator=' ', append=False)
 
+        checkpoint = keras.callbacks.ModelCheckpoint("check_" + output_file + ".h5",
+                                                     monitor='val_loss', save_best_only=True)
+
         total_length = (len(self.signal_hillas) + len(self.background_hillas))
         steps = total_length / batch_size
+        val_steps = int(np.floor(total_length * validation_fraction))
 
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
-                               steps_per_epoch=steps-20,
+                               steps_per_epoch=steps-val_steps,
                                validation_data=self.generate_training_image(batch_size=batch_size),
-                               validation_steps=20,
-                               epochs=100, callbacks=[reduce_lr, stopping, logger], shuffle=True)
+                               validation_steps=val_steps,
+                               epochs=100, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
 
         self.network.save_weights(output_file)
 
