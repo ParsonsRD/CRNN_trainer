@@ -204,6 +204,9 @@ class RNNtrainer:
         reduce_lr = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5,
                                                       patience=10, min_lr=0.0)
 
+        logger = keras.callbacks.CSVLogger("log_" + output_file + ".csv",
+                                           separator=' ', append=False)
+
         total_length = (len(self.signal_hillas) + len(self.background_hillas))
         steps = total_length / batch_size
 
@@ -211,7 +214,7 @@ class RNNtrainer:
                                steps_per_epoch=steps-20,
                                validation_data=self.generate_training_image(batch_size=batch_size),
                                validation_steps=20,
-                               epochs=100, callbacks=[reduce_lr, stopping], shuffle=True)
+                               epochs=100, callbacks=[reduce_lr, stopping, logger], shuffle=True)
 
         self.network.save_weights(output_file)
 
