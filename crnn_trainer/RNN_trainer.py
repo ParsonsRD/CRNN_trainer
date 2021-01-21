@@ -266,7 +266,8 @@ class RNNtrainer:
         total_length = (len(self.signal_hillas) + len(self.background_hillas))
         steps = total_length / batch_size
         val_steps = int(np.floor((total_length * validation_fraction)/batch_size))
-        print(steps, val_steps)
+
+
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-val_steps,
                                validation_data=self.generate_training_image(batch_size=batch_size, bg_weight=bg_weight),

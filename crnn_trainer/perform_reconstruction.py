@@ -1,7 +1,7 @@
 from ctapipe.reco.hillas_intersection import HillasIntersection
 import copy
 from tqdm import tqdm
-from ctapipe.image import tailcuts_clean
+from ctapipe.image import tailcuts_clean, dilate
 from ctapipe.image.hillas import hillas_parameters, HillasParameterizationError
 import numpy as np
 import astropy.units as u
@@ -35,6 +35,13 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
         image_clean = np.zeros(image_shape)
         image_clean[mask] = image[mask]
 
+        if np.sum(image_clean) == 0:
+            image = image_clean
+        else:
+            for i in range(4):
+                mask = dilate(geometry, mask.ravel()).reshape(image_shape)
+            image[np.invert(mask)] = 0
+
         # Make Hillas parameters and make some simple cuts on them
         try:
             hill = hillas_parameters(geometryh, image_clean.ravel())
@@ -45,6 +52,9 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
                 tel_x_dict[t] = tel_y[t] * -1
                 tel_y_dict[t] = tel_x[t]
                 hillas_parameter_dict[t] = hill
+            else:
+                image = np.zeros(image_shape)
+
         # Skip if we can't make our Hillas parameters
         except HillasParameterizationError:
             t = t
