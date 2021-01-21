@@ -52,7 +52,8 @@ class RNNtrainer:
                 crnn_trainer.perform_reconstruction(images_loaded, geometry,
                                                     self.corsika_reader.telescope_x_positions*u.m,
                                                     self.corsika_reader.telescope_y_positions*u.m,
-                                                    min_tels=min_tels, intensity_cut=intensity_cut, local_distance=local_distance)
+                                                    min_tels=min_tels, intensity_cut=intensity_cut,
+                                                    local_distance=local_distance)
 
             # Copy values into output arrays
             if images is None:
@@ -136,13 +137,20 @@ class RNNtrainer:
         self.network = model
 
     # Generator function to produce training inputs for Keras (done to save memory usage)
-    def generate_training_image(self, batch_size=10000):
+    def generate_training_image(self, batch_size=10000, particle_type="all",
+                                dead_pixel_fraction=0., pixel_infill=True, bg_weight=1.0):
 
         signal_length = len(self.signal_hillas)
-        indices = np.arange(len(self.signal_hillas) + len(self.background_hillas))
 
         # Produce a shuffled set of indices to let us choose s random sample
-        np.random.shuffle(indices)
+        if particle_type == "all":
+            indices = np.arange(len(self.signal_hillas) + len(self.background_hillas))
+            np.random.shuffle(indices)
+        elif particle_type == "signal":
+            indices = np.arange(len(self.signal_hillas))
+        elif particle_type == "background":
+            indices = np.arange(len(self.background_hillas))
+            signal_length = 0
 
         # Then start our generator loop
         index = 0
@@ -150,25 +158,69 @@ class RNNtrainer:
             # Grab our selection and decide whether they are signal or not
             selection = indices[index:index+batch_size]
             signal_selection = selection[selection < signal_length]
-            background_selection = selection[selection > signal_length] - signal_length
+            background_selection = selection[selection > signal_length-1] - signal_length
 
             # Create the target arrays
             signal_target = np.zeros((2, len(signal_selection)))
             signal_target[0][:] = 1
             background_target = np.zeros((2, len(background_selection)))
             background_target[1][:] = 1
+            signal_weight = np.ones(len(signal_selection))
+            background_weight = np.ones(len(background_selection)) * bg_weight
 
             # Then create our training sets
-            hillas_input = np.concatenate((self.signal_hillas[signal_selection],
-                                           self.background_hillas[background_selection]))
-            target = np.concatenate((signal_target.T, background_target.T))
+            if particle_type == "all":
+                hillas_input = np.concatenate((self.signal_hillas[signal_selection],
+                                               self.background_hillas[background_selection]))
+                target = np.concatenate((signal_target.T, background_target.T))
+                weight = np.concatenate((signal_weight, background_weight))
+            elif particle_type == "signal":
+                hillas_input = self.signal_hillas[signal_selection]
+                target = signal_target.T
+                weight = signal_weight
+            elif particle_type == "background":
+                hillas_input = self.background_hillas[background_selection]
+                target = background_target.T
+                weight = background_weight
 
             if self.network_type == "HillasRNN":
-                yield hillas_input, target
+                yield hillas_input, target, weight
             elif self.network_type == "CRNN":
+
                 # For CRNN we need to use our image input
-                image_input = np.concatenate((self.signal_images[signal_selection].todense(),
-                                              self.background_images[background_selection].todense()))
+                if particle_type == "all":
+                    image_input = np.concatenate((self.signal_images[signal_selection].todense(),
+                                                  self.background_images[background_selection].todense()))
+                elif particle_type == "signal":
+                    image_input = self.signal_images[signal_selection].todense()
+                elif particle_type == "background":
+                    image_input = self.background_images[background_selection].todense()
+
+                #image_sum = np.max(image_input.reshape((image_input.shape[0], image_input.shape[1],
+                #                                        image_input.shape[2] * image_input.shape[3])), axis=-1)
+                #image_mask = image_sum != 0
+
+                if dead_pixel_fraction > 0.:
+                    dead_pix = np.random.rand(*image_input.shape[1:]) > dead_pixel_fraction
+                    dead_pix = dead_pix[np.newaxis, :]
+                    image_input *= dead_pix
+
+                #
+                #     if pixel_infill:
+                #         from astropy.convolution import interpolate_replace_nans, convolve_fft
+                #         kernel = np.ones((1, 1, 3, 3))/9.
+                #         kernel[0][0][1][1] = 0
+                #
+                #         print(np.sum(image_input))
+                #         image_input *= dead_pix
+                #         image_input[image_input == 0.] = np.nan
+                #         print(np.sum(image_input))
+                #
+                #         #image_input[image_mask][image_input[image_mask] == np.nan] = 0
+                #         image_input = interpolate_replace_nans(image_input, kernel, convolve_fft)
+                #         print(np.sum(image_input))
+                #     else:
+                #     image_input *= dead_pix
 
                 image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
                                                    image_input.shape[2], image_input.shape[3], 1))
@@ -184,14 +236,15 @@ class RNNtrainer:
                 image_mask = image_mask.astype("int")
                 print("\n", np.sum(np.sum(image_mask, axis=-1) < 2))
 
-                yield [image_input, image_mask, hillas_input], target
+                yield [image_input, image_mask, hillas_input], target, weight
 
             index += batch_size
             if index > len(indices):
                 index = 0
+                self.target = None
 
     # Train our chosen network
-    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2):
+    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2, bg_weight=1.0):
 
         print("Training", self.network_type, "network with", len(self.signal_hillas), "signal events and",
               len(self.background_hillas), "background events")
@@ -216,7 +269,7 @@ class RNNtrainer:
         print(steps, val_steps)
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-val_steps,
-                               validation_data=self.generate_training_image(batch_size=batch_size),
+                               validation_data=self.generate_training_image(batch_size=batch_size, bg_weight=bg_weight),
                                validation_steps=val_steps,
                                epochs=500, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
 
@@ -232,24 +285,21 @@ class RNNtrainer:
                self.test_network(self.background_hillas.astype("float32"), self.background_hillas.astype("float32"))
 
     # Evaluate network performance on a given dataset
-    def test_network(self, image_input, hillas_input):
+    def test_network(self, batch_size=1000, dead_pixel_fraction=0.):
 
         # Perform normalisation as in training
-        image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
-                                           image_input.shape[2], image_input.shape[3], 1))
-        image_sum = np.max(image_input.reshape((image_input.shape[0], image_input.shape[1],
-                                                image_input.shape[2] * image_input.shape[3])), axis=-1, dtype="float32")
-        image_input /= image_sum[..., np.newaxis, np.newaxis, np.newaxis]
-        image_input[np.isnan(image_input)] = 0
-        image_input[image_input < 0] = 0
+        total_length = len(self.signal_hillas)
+        steps = total_length / batch_size
+        signal_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
+                                                                              particle_type="signal",
+                                                                              dead_pixel_fraction=dead_pixel_fraction),
+                                                 steps=steps, verbose=1)
 
-        image_mask = image_sum > 0
-        image_mask = image_mask.astype("int")
+        total_length = len(self.background_hillas)
+        steps = total_length / batch_size
+        background_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
+                                                                                  particle_type="background",
+                                                                                  dead_pixel_fraction=dead_pixel_fraction),
+                                                     steps=steps, verbose=1)
 
-        prediction = None
-        if self.network_type == "HillasRNN":
-            prediction = self.network.predict([hillas_input])
-        elif self.network_type == "CRNN":
-            prediction = self.network.predict([image_input, image_mask, hillas_input])
-
-        return prediction
+        return signal_prediction.T[0], background_prediction.T[0]
