@@ -244,7 +244,7 @@ class RNNtrainer:
                 self.target = None
 
     # Train our chosen network
-    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2):
+    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2, bg_weight=1.0):
 
         print("Training", self.network_type, "network with", len(self.signal_hillas), "signal events and",
               len(self.background_hillas), "background events")
@@ -269,7 +269,7 @@ class RNNtrainer:
 
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-val_steps,
-                               validation_data=self.generate_training_image(batch_size=batch_size),
+                               validation_data=self.generate_training_image(batch_size=batch_size, bg_weight=bg_weight),
                                validation_steps=val_steps,
                                epochs=100, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
 
