@@ -32,11 +32,12 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
         mask = tailcuts_clean(geometry, image.ravel(),
                               picture_thresh=picture_thresh,
                               boundary_thresh=boundary_thresh).reshape(image_shape)
-        image[np.invert(mask)] = 0
+        image_clean = np.zeros(image_shape)
+        image_clean[mask] = image[mask]
 
         # Make Hillas parameters and make some simple cuts on them
         try:
-            hill = hillas_parameters(geometryh, image.ravel())
+            hill = hillas_parameters(geometryh, image_clean.ravel())
 
             centroid_dist = np.sqrt(hill.x ** 2 + hill.y ** 2)
             # Cut on intensity on distance from camera centre
