@@ -90,7 +90,6 @@ class RNNtrainer:
         data = [signal_images, signal_header, signal_hillas, signal_reconstructed,
                 background_images, background_header, background_hillas, background_reconstructed]
 
-        print(signal_images.shape)
         with open(output_file, "wb") as f:
             pickle.dump(data, f)
             f.close()
@@ -130,7 +129,7 @@ class RNNtrainer:
             input_layer, output_layer = crnn_trainer.network_definitions.create_hillas_rnn(self.signal_hillas.shape[1:])
 
         # Compile is using fairly standard parameters
-        sgd = keras.optimizers.Adam(lr=0.0005)
+        sgd = keras.optimizers.Adam(lr=0.001)
         model = keras.Model(inputs=input_layer, outputs=output_layer)
         model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
@@ -183,6 +182,7 @@ class RNNtrainer:
                 # Finally create mask for empty images
                 image_mask = image_sum != 0
                 image_mask = image_mask.astype("int")
+                print("\n", np.sum(np.sum(image_mask, axis=-1) < 2))
 
                 yield [image_input, image_mask, hillas_input], target
 
@@ -212,13 +212,13 @@ class RNNtrainer:
 
         total_length = (len(self.signal_hillas) + len(self.background_hillas))
         steps = total_length / batch_size
-        val_steps = int(np.floor(total_length * validation_fraction))
-
+        val_steps = int(np.floor((total_length * validation_fraction)/batch_size))
+        print(steps, val_steps)
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-val_steps,
                                validation_data=self.generate_training_image(batch_size=batch_size),
                                validation_steps=val_steps,
-                               epochs=100, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
+                               epochs=500, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
 
         self.network.save_weights(output_file)
 
