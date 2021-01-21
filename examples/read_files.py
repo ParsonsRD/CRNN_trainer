@@ -3,6 +3,7 @@ import os
 from crnn_trainer.RNN_trainer import RNNtrainer
 from corsika_toy_iact.iact_array import IACTArray
 import numpy as np
+import sys
 
 #directory = "/Users/dparsons/lustre/fs20/group/hess/user/dparsons/HadronicInteractions/IACT_Spec/QGSII/corsika/Gamma/alt1800/Zenith0/"
 directory = "../Data/Gamma/"
