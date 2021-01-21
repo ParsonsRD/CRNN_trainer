@@ -167,7 +167,7 @@ class RNNtrainer:
             background_target = np.zeros((2, len(background_selection)))
             background_target[1][:] = 1
             signal_weight = np.ones(len(signal_selection))
-            background_weight = np.ones(len(background_selection)) * background_selection
+            background_weight = np.ones(len(background_selection)) * bg_weight
 
             # Then create our training sets
             if particle_type == "all":
