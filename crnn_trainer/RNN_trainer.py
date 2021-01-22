@@ -57,12 +57,12 @@ class RNNtrainer:
 
             # Copy values into output arrays
             if images is None:
-                images = COO.from_numpy(images_loaded[selected])
+                images = COO.from_numpy(images_loaded[selected].astype("float16"))
                 header = header_loaded[selected]
                 hillas_parameters = hillas
                 reconstructed_parameters = reconstructed
             else:
-                images = sparse.concatenate((images,  COO.from_numpy(images_loaded[selected])), axis=0)
+                images = sparse.concatenate((images,  COO.from_numpy(images_loaded[selected].astype("float16"))), axis=0)
                 header = np.concatenate((header, header_loaded[selected]), axis=0)
                 hillas_parameters = np.concatenate((hillas_parameters, hillas), axis=0)
                 reconstructed_parameters = np.concatenate((reconstructed_parameters, reconstructed), axis=0)

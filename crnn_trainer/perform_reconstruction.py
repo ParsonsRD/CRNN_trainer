@@ -24,7 +24,9 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
     t = 0
     # Loop over all our images in this event
     for image in image_event:
+        image_shape = image.shape
         if np.sum(image) == 0:
+            image[:, :] = 0
             continue
 
         # Clean the images using split-level cleaning
@@ -36,7 +38,7 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
         image_clean[mask] = image[mask]
 
         if np.sum(image_clean) == 0:
-            image = image_clean
+            image[:, :] = 0
         else:
             for i in range(4):
                 mask = dilate(geometry, mask.ravel()).reshape(image_shape)
@@ -53,11 +55,13 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
                 tel_y_dict[t] = tel_x[t]
                 hillas_parameter_dict[t] = hill
             else:
-                image = np.zeros(image_shape)
+                image[:, :] = 0
 
         # Skip if we can't make our Hillas parameters
         except HillasParameterizationError:
             t = t
+            image[:, :] = 0
+
         t += 1
 
     return hillas_parameter_dict, tel_x_dict, tel_y_dict
