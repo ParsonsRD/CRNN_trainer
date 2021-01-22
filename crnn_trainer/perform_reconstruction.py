@@ -30,7 +30,6 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
             continue
 
         # Clean the images using split-level cleaning
-        image_shape = image.shape
         mask = tailcuts_clean(geometry, image.ravel(),
                               picture_thresh=picture_thresh,
                               boundary_thresh=boundary_thresh).reshape(image_shape)
