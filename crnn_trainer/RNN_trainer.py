@@ -110,10 +110,30 @@ class RNNtrainer:
 
     def load_training_images(self, input_file):
 
-        self.signal_images, self.signal_header, \
-        self.signal_hillas, self.signal_reconstructed,\
-        self.background_images, self.background_header, \
-        self.background_hillas, self.background_reconstructed = self.load_processed_images(input_file)
+        signal_images, signal_header, \
+        signal_hillas, signal_reconstructed,\
+        background_images, background_header, \
+        background_hillas, background_reconstructed = self.load_processed_images(input_file)
+
+        if self.signal_images is None:
+            self.signal_images, self.signal_header, \
+            self.signal_hillas, self.signal_reconstructed,\
+            self.background_images, self.background_header, \
+            self.background_hillas, self.background_reconstructed = signal_images, signal_header, \
+                                                                    signal_hillas, signal_reconstructed,\
+                                                                    background_images, background_header, \
+                                                                    background_hillas, background_reconstructed
+        else:
+            
+            self.signal_images = sparse.concatenate((self.signal_images, signal_images))
+            self.signal_header = np.concatenate((self.signal_header, signal_header))
+            self.signal_hillas = np.concatenate((self.signal_hillas, signal_hillas))
+            self.signal_reconstructed = np.concatenate((self.signal_reconstructed, signal_reconstructed))
+
+            self.background_images = sparse.concatenate((self.background_images, background_images))
+            self.background_header = np.concatenate((self.background_header, background_header))
+            self.background_hillas = np.concatenate((self.background_hillas, background_hillas))
+            self.background_reconstructed = np.concatenate((self.background_reconstructed, background_reconstructed))
 
     # Create neural network of the requested type
     def create_network(self, network_type):
@@ -189,12 +209,12 @@ class RNNtrainer:
 
                 # For CRNN we need to use our image input
                 if particle_type == "all":
-                    image_input = np.concatenate((self.signal_images[signal_selection].todense(),
-                                                  self.background_images[background_selection].todense()))
+                    image_input = np.concatenate((self.signal_images[signal_selection].todense().astype("float32"),
+                                                  self.background_images[background_selection].todense().astype("float32")))
                 elif particle_type == "signal":
-                    image_input = self.signal_images[signal_selection].todense()
+                    image_input = self.signal_images[signal_selection].todense().astype("float32")
                 elif particle_type == "background":
-                    image_input = self.background_images[background_selection].todense()
+                    image_input = self.background_images[background_selection].todense().astype("float32")
 
                 #image_sum = np.max(image_input.reshape((image_input.shape[0], image_input.shape[1],
                 #                                        image_input.shape[2] * image_input.shape[3])), axis=-1)
