@@ -126,9 +126,9 @@ class RNNtrainer:
                                                                     background_hillas, background_reconstructed
         else:
             self.signal_images = sparse.concatenate((self.signal_images, signal_images))
-            self.signal_images = np.concatenate((self.signal_header, signal_header))
-            self.signal_images = np.concatenate((self.signal_hillas, signal_hillas))
-            self.signal_images = np.concatenate((self.signal_reconstructed, signal_reconstructed))
+            self.signal_header = np.concatenate((self.signal_header, signal_header))
+            self.signal_hillas = np.concatenate((self.signal_hillas, signal_hillas))
+            self.signal_reconstructed = np.concatenate((self.signal_reconstructed, signal_reconstructed))
 
             self.background_images = sparse.concatenate((self.background_images, background_images))
             self.background_header = np.concatenate((self.background_header, background_header))
@@ -158,7 +158,7 @@ class RNNtrainer:
 
     # Generator function to produce training inputs for Keras (done to save memory usage)
     def generate_training_image(self, batch_size=10000, particle_type="all",
-                                dead_pixel_fraction=0., pixel_infill=True, bg_weight=1.0):
+                                dead_pixel_fraction=0.1, pixel_infill=True, bg_weight=1.0):
 
         signal_length = len(self.signal_hillas)
 
@@ -225,22 +225,33 @@ class RNNtrainer:
                     dead_pix = dead_pix[np.newaxis, :]
                     image_input *= dead_pix
 
-                #
-                #     if pixel_infill:
-                #         from astropy.convolution import interpolate_replace_nans, convolve_fft
-                #         kernel = np.ones((1, 1, 3, 3))/9.
-                #         kernel[0][0][1][1] = 0
-                #
-                #         print(np.sum(image_input))
-                #         image_input *= dead_pix
-                #         image_input[image_input == 0.] = np.nan
-                #         print(np.sum(image_input))
-                #
-                #         #image_input[image_mask][image_input[image_mask] == np.nan] = 0
-                #         image_input = interpolate_replace_nans(image_input, kernel, convolve_fft)
-                #         print(np.sum(image_input))
-                #     else:
-                #     image_input *= dead_pix
+                    if pixel_infill:
+                        expanded_shape = (image_input.shape[0], image_input.shape[1],
+                                          image_input.shape[2]+2, image_input.shape[3]+2)
+                        shift_left = np.zeros(expanded_shape)
+
+                        shift_left[:, :, 0:image_input.shape[2], 1:image_input.shape[3]+1] = image_input
+
+                        shift_right = np.zeros(expanded_shape)
+                        shift_right[:, :, 2:image_input.shape[2]+2, 1:image_input.shape[3]+1] = image_input
+
+                        shift_up = np.zeros(expanded_shape)
+                        shift_up[:, :, 1:image_input.shape[2]+1, 0:image_input.shape[3]] = image_input
+
+                        shift_down = np.zeros(expanded_shape)
+                        shift_down[:, :, 1:image_input.shape[2]+1, 2:image_input.shape[3]+2] = image_input
+
+                        sum_shifts = shift_left + shift_right + shift_up + shift_down
+                        non_dead_pixels = (shift_left > 0).astype("int") + (shift_right > 0).astype("int") +\
+                                          (shift_up > 0).astype("int") + (shift_down > 0).astype("int")
+                        sum_shifts = sum_shifts / non_dead_pixels.astype("float32")
+
+                        sum_shifts[np.isinf(sum_shifts)] = 0
+                        sum_shifts[np.isnan(sum_shifts)] = 0
+
+                        sum_shifts = sum_shifts[:, :, 1:image_input.shape[2]+1, 1:image_input.shape[3]+1]
+                        dead_pix = np.invert(np.repeat(dead_pix, image_input.shape[0], axis=0))
+                        image_input[dead_pix] = sum_shifts[dead_pix]
 
                 image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
                                                    image_input.shape[2], image_input.shape[3], 1))
@@ -254,7 +265,6 @@ class RNNtrainer:
                 # Finally create mask for empty images
                 image_mask = image_sum != 0
                 image_mask = image_mask.astype("int")
-                print("\n", np.sum(np.sum(image_mask, axis=-1) < 2))
 
                 yield [image_input, image_mask, hillas_input], target, weight
 
