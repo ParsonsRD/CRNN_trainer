@@ -216,10 +216,6 @@ class RNNtrainer:
                 elif particle_type == "background":
                     image_input = self.background_images[background_selection].todense()
 
-                #image_sum = np.max(image_input.reshape((image_input.shape[0], image_input.shape[1],
-                #                                        image_input.shape[2] * image_input.shape[3])), axis=-1)
-                #image_mask = image_sum != 0
-
                 if dead_pixel_fraction > 0.:
                     dead_pix = np.random.rand(*image_input.shape[1:]) > dead_pixel_fraction
                     dead_pix = dead_pix[np.newaxis, :]
@@ -316,21 +312,23 @@ class RNNtrainer:
                self.test_network(self.background_hillas.astype("float32"), self.background_hillas.astype("float32"))
 
     # Evaluate network performance on a given dataset
-    def test_network(self, batch_size=1000, dead_pixel_fraction=0.):
+    def test_network(self, batch_size=1000, dead_pixel_fraction=0., pixel_infill=False):
 
         # Perform normalisation as in training
         total_length = len(self.signal_hillas)
         steps = total_length / batch_size
         signal_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
                                                                               particle_type="signal",
-                                                                              dead_pixel_fraction=dead_pixel_fraction),
+                                                                              dead_pixel_fraction=dead_pixel_fraction,
+                                                                              pixel_infill=pixel_infill),
                                                  steps=steps, verbose=1)
 
         total_length = len(self.background_hillas)
         steps = total_length / batch_size
         background_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
                                                                                   particle_type="background",
-                                                                                  dead_pixel_fraction=dead_pixel_fraction),
+                                                                                  dead_pixel_fraction=dead_pixel_fraction,
+                                                                                  pixel_infill=pixel_infill),
                                                      steps=steps, verbose=1)
 
         return signal_prediction.T[0], background_prediction.T[0]
