@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 from sparse import COO
 import sparse
 import pickle
+from skimage.restoration import denoise_wavelet
 
 __all__ = ["RNNtrainer"]
 
@@ -158,7 +159,8 @@ class RNNtrainer:
 
     # Generator function to produce training inputs for Keras (done to save memory usage)
     def generate_training_image(self, batch_size=10000, particle_type="all",
-                                dead_pixel_fraction=0.1, pixel_infill=True, bg_weight=1.0):
+                                dead_pixel_fraction=0.1, pixel_infill=True,
+                                bg_weight=1.0, denoise_sigma=0.):
 
         signal_length = len(self.signal_hillas)
 
@@ -222,32 +224,7 @@ class RNNtrainer:
                     image_input *= dead_pix
 
                     if pixel_infill:
-                        expanded_shape = (image_input.shape[0], image_input.shape[1],
-                                          image_input.shape[2]+2, image_input.shape[3]+2)
-                        shift_left = np.zeros(expanded_shape)
-
-                        shift_left[:, :, 0:image_input.shape[2], 1:image_input.shape[3]+1] = image_input
-
-                        shift_right = np.zeros(expanded_shape)
-                        shift_right[:, :, 2:image_input.shape[2]+2, 1:image_input.shape[3]+1] = image_input
-
-                        shift_up = np.zeros(expanded_shape)
-                        shift_up[:, :, 1:image_input.shape[2]+1, 0:image_input.shape[3]] = image_input
-
-                        shift_down = np.zeros(expanded_shape)
-                        shift_down[:, :, 1:image_input.shape[2]+1, 2:image_input.shape[3]+2] = image_input
-
-                        sum_shifts = shift_left + shift_right + shift_up + shift_down
-                        non_dead_pixels = (shift_left > 0).astype("int") + (shift_right > 0).astype("int") +\
-                                          (shift_up > 0).astype("int") + (shift_down > 0).astype("int")
-                        sum_shifts = sum_shifts / non_dead_pixels.astype("float32")
-
-                        sum_shifts[np.isinf(sum_shifts)] = 0
-                        sum_shifts[np.isnan(sum_shifts)] = 0
-
-                        sum_shifts = sum_shifts[:, :, 1:image_input.shape[2]+1, 1:image_input.shape[3]+1]
-                        dead_pix = np.invert(np.repeat(dead_pix, image_input.shape[0], axis=0))
-                        image_input[dead_pix] = sum_shifts[dead_pix]
+                        self.infill_image(image_input, dead_pix)
 
                 image_input = image_input.reshape((image_input.shape[0], image_input.shape[1],
                                                    image_input.shape[2], image_input.shape[3], 1))
@@ -257,6 +234,11 @@ class RNNtrainer:
                 image_input /= image_sum[..., np.newaxis, np.newaxis, np.newaxis]
                 image_input[np.isnan(image_input)] = 0
                 image_input[image_input < 0] = 0
+
+                if denoise_sigma > 0.:
+                    empty_mask = image_input == 0
+                    image_input = denoise_wavelet(image_input, sigma=denoise_sigma)
+                    image_input[empty_mask] = 0
 
                 # Finally create mask for empty images
                 image_mask = image_sum != 0
@@ -269,8 +251,37 @@ class RNNtrainer:
                 index = 0
                 self.target = None
 
+    @staticmethod
+    def infill_image(image_input, dead_pix):
+        expanded_shape = (image_input.shape[0], image_input.shape[1],
+                          image_input.shape[2] + 2, image_input.shape[3] + 2)
+        shift_left = np.zeros(expanded_shape)
+
+        shift_left[:, :, 0:image_input.shape[2], 1:image_input.shape[3] + 1] = image_input
+
+        shift_right = np.zeros(expanded_shape)
+        shift_right[:, :, 2:image_input.shape[2] + 2, 1:image_input.shape[3] + 1] = image_input
+
+        shift_up = np.zeros(expanded_shape)
+        shift_up[:, :, 1:image_input.shape[2] + 1, 0:image_input.shape[3]] = image_input
+
+        shift_down = np.zeros(expanded_shape)
+        shift_down[:, :, 1:image_input.shape[2] + 1, 2:image_input.shape[3] + 2] = image_input
+
+        sum_shifts = shift_left + shift_right + shift_up + shift_down
+        non_dead_pixels = (shift_left > 0).astype("int") + (shift_right > 0).astype("int") + \
+                          (shift_up > 0).astype("int") + (shift_down > 0).astype("int")
+        sum_shifts = sum_shifts / non_dead_pixels.astype("float32")
+
+        sum_shifts[np.isinf(sum_shifts)] = 0
+        sum_shifts[np.isnan(sum_shifts)] = 0
+
+        sum_shifts = sum_shifts[:, :, 1:image_input.shape[2] + 1, 1:image_input.shape[3] + 1]
+        dead_pix = np.invert(np.repeat(dead_pix, image_input.shape[0], axis=0))
+        image_input[dead_pix] = sum_shifts[dead_pix]
+
     # Train our chosen network
-    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2, bg_weight=1.0):
+    def train_network(self, output_file, batch_size=1000, validation_fraction=0.2, bg_weight=1.0, denoise_sigma=0.):
 
         print("Training", self.network_type, "network with", len(self.signal_hillas), "signal events and",
               len(self.background_hillas), "background events")
@@ -296,7 +307,9 @@ class RNNtrainer:
 
         fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
                                steps_per_epoch=steps-val_steps,
-                               validation_data=self.generate_training_image(batch_size=batch_size, bg_weight=bg_weight),
+                               validation_data=self.generate_training_image(batch_size=batch_size,
+                                                                            bg_weight=bg_weight,
+                                                                            denoise_sigma=denoise_sigma),
                                validation_steps=val_steps,
                                epochs=500, callbacks=[reduce_lr, stopping, logger, checkpoint], shuffle=True)
 
@@ -312,7 +325,7 @@ class RNNtrainer:
                self.test_network(self.background_hillas.astype("float32"), self.background_hillas.astype("float32"))
 
     # Evaluate network performance on a given dataset
-    def test_network(self, batch_size=1000, dead_pixel_fraction=0., pixel_infill=False):
+    def test_network(self, batch_size=1000, dead_pixel_fraction=0., pixel_infill=False, denoise_sigma=0.):
 
         # Perform normalisation as in training
         total_length = len(self.signal_hillas)
@@ -320,7 +333,8 @@ class RNNtrainer:
         signal_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
                                                                               particle_type="signal",
                                                                               dead_pixel_fraction=dead_pixel_fraction,
-                                                                              pixel_infill=pixel_infill),
+                                                                              pixel_infill=pixel_infill,
+                                                                              denoise_sigma=denoise_sigma),
                                                  steps=steps, verbose=1)
 
         total_length = len(self.background_hillas)
@@ -328,7 +342,8 @@ class RNNtrainer:
         background_prediction = self.network.predict(self.generate_training_image(batch_size=batch_size,
                                                                                   particle_type="background",
                                                                                   dead_pixel_fraction=dead_pixel_fraction,
-                                                                                  pixel_infill=pixel_infill),
+                                                                                  pixel_infill=pixel_infill,
+                                                                                  denoise_sigma=denoise_sigma),
                                                      steps=steps, verbose=1)
 
         return signal_prediction.T[0], background_prediction.T[0]
