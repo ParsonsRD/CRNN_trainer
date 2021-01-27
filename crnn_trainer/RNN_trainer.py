@@ -238,6 +238,7 @@ class RNNtrainer:
                 image_mask = image_sum != 0
                 image_mask = image_mask.astype("int")
 
+                # Perform image denoising
                 if denoise_sigma > 0.:
                     empty_mask = image_input == 0
                     image_input_shape = image_input.shape
@@ -262,12 +263,15 @@ class RNNtrainer:
                 index = 0
                 self.target = None
 
+    # Method for infilling missing pixels with the average of its neighbours in the case
+    # that some are deactivated
     @staticmethod
     def infill_image(image_input, dead_pix):
+        # Expand our images out by one pixel in all directions
         expanded_shape = (image_input.shape[0], image_input.shape[1],
                           image_input.shape[2] + 2, image_input.shape[3] + 2)
+        # Then shift our image one pixel in each direction
         shift_left = np.zeros(expanded_shape)
-
         shift_left[:, :, 0:image_input.shape[2], 1:image_input.shape[3] + 1] = image_input
 
         shift_right = np.zeros(expanded_shape)
@@ -279,16 +283,21 @@ class RNNtrainer:
         shift_down = np.zeros(expanded_shape)
         shift_down[:, :, 1:image_input.shape[2] + 1, 2:image_input.shape[3] + 2] = image_input
 
+        # Then sum these shifted images
         sum_shifts = shift_left + shift_right + shift_up + shift_down
         non_dead_pixels = (shift_left > 0).astype("int") + (shift_right > 0).astype("int") + \
                           (shift_up > 0).astype("int") + (shift_down > 0).astype("int")
+        # And divide by number of pixels summed
         sum_shifts = sum_shifts / non_dead_pixels.astype("float32")
 
+        # Finally fill in blanks in the case that pixels have no neighbours
         sum_shifts[np.isinf(sum_shifts)] = 0
         sum_shifts[np.isnan(sum_shifts)] = 0
 
+        # Finally take the centre of our expanded image
         sum_shifts = sum_shifts[:, :, 1:image_input.shape[2] + 1, 1:image_input.shape[3] + 1]
         dead_pix = np.invert(np.repeat(dead_pix, image_input.shape[0], axis=0))
+        # And fill in the deactivated pixels with our average values
         image_input[dead_pix] = sum_shifts[dead_pix]
 
     # Train our chosen network
