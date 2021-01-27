@@ -234,14 +234,26 @@ class RNNtrainer:
                 image_input[np.isnan(image_input)] = 0
                 image_input[image_input < 0] = 0
 
-                if denoise_sigma > 0.:
-                    empty_mask = image_input == 0
-                    image_input = denoise_wavelet(image_input, sigma=denoise_sigma)
-                    image_input[empty_mask] = 0
-
                 # Finally create mask for empty images
                 image_mask = image_sum != 0
                 image_mask = image_mask.astype("int")
+
+                if denoise_sigma > 0.:
+                    empty_mask = image_input == 0
+                    image_input_shape = image_input.shape
+                    image_mask_shape = image_mask.shape
+
+                    image_input = image_input.reshape((image_input_shape[0] * image_input_shape[1],
+                                                       image_input_shape[2], image_input_shape[3]))
+                    image_mask = image_mask.reshape((image_mask_shape[0] * image_mask_shape[1]))
+
+                    for dn in range(image_input.shape[0]):
+                        if image_mask[dn]:
+                            image_input[dn] = denoise_wavelet(image_input[dn], sigma=denoise_sigma)
+
+                    image_input = image_input.reshape(image_input_shape)
+                    image_mask = image_mask.reshape(image_mask_shape)
+                    image_input[empty_mask] = 0
 
                 yield [image_input, image_mask, hillas_input], target, weight
 
@@ -303,8 +315,9 @@ class RNNtrainer:
         steps = total_length / batch_size
         val_steps = int(np.floor((total_length * validation_fraction)/batch_size))
 
-
-        fit = self.network.fit(self.generate_training_image(batch_size=batch_size),
+        fit = self.network.fit(self.generate_training_image(batch_size=batch_size,
+                                                            bg_weight=bg_weight,
+                                                            denoise_sigma=denoise_sigma),
                                steps_per_epoch=steps-val_steps,
                                validation_data=self.generate_training_image(batch_size=batch_size,
                                                                             bg_weight=bg_weight,
