@@ -59,7 +59,7 @@ def hillas_parameterisation(image_event, geometry, tel_x, tel_y,
         # Skip if we can't make our Hillas parameters
         except HillasParameterizationError:
             t = t
-            image = np.zeros(image_shape)
+            image[:, :] = 0
 
         t += 1
 

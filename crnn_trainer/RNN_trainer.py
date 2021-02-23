@@ -75,13 +75,12 @@ class RNNtrainer:
 
             # Copy values into output arrays
             if images is None:
-                images = COO.from_numpy(images_loaded[selected].astype("float32"))
-                print(images.dtype)
+                images = COO.from_numpy(images_loaded[selected].astype("float16"))
                 header = header_loaded[selected]
                 hillas_parameters = hillas
                 reconstructed_parameters = reconstructed
             else:
-                images = sparse.concatenate((images,  COO.from_numpy(images_loaded[selected])), axis=0)
+                images = sparse.concatenate((images,  COO.from_numpy(images_loaded[selected].astype("float16"))), axis=0)
                 header = np.concatenate((header, header_loaded[selected]), axis=0)
                 hillas_parameters = np.concatenate((hillas_parameters, hillas), axis=0)
                 reconstructed_parameters = np.concatenate((reconstructed_parameters, reconstructed), axis=0)
@@ -228,12 +227,12 @@ class RNNtrainer:
 
                 # For CRNN we need to use our image input
                 if particle_type == "all":
-                    image_input = np.concatenate((self.signal_images[signal_selection].todense(),
-                                                  self.background_images[background_selection].todense()))
+                    image_input = np.concatenate((self.signal_images[signal_selection].todense().astype("float32"),
+                                                  self.background_images[background_selection].todense().astype("float32")))
                 elif particle_type == "signal":
-                    image_input = self.signal_images[signal_selection].todense()
+                    image_input = self.signal_images[signal_selection].todense().astype("float32")
                 elif particle_type == "background":
-                    image_input = self.background_images[background_selection].todense()
+                    image_input = self.background_images[background_selection].todense().astype("float32")
 
                 if dead_pixel_fraction > 0.:
                     dead_pix = np.random.rand(*image_input.shape[1:]) > dead_pixel_fraction
