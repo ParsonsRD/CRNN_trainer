@@ -27,7 +27,7 @@ class RNNtrainer:
         self.network = None
         self.network_type = network_type
 
-    def read_and_process(self, file_list, min_tels=2, intensity_cut=80, local_distance=3, **kwargs):
+    def read_and_process(self, file_list, min_tels=2, intensity_cut=80, local_distance=3, denoise_sigma=0., **kwargs):
 
         images, header, hillas_parameters, reconstructed_parameters = None, None, None, None
         for file_name in tqdm(file_list):
@@ -55,6 +55,23 @@ class RNNtrainer:
                                                     self.corsika_reader.telescope_y_positions*u.m,
                                                     min_tels=min_tels, intensity_cut=intensity_cut,
                                                     local_distance=local_distance)
+
+            if denoise_sigma > 0.:
+                    empty_mask = (images_loaded == 0)
+                    image_input_shape = images_loaded.shape
+                    image_mask_shape = image_mask.shape
+
+                    images_loaded = images_loaded.reshape((image_input_shape[0] * image_input_shape[1],
+                                                           image_input_shape[2], image_input_shape[3]))
+                    image_mask = image_mask.reshape((image_mask_shape[0] * image_mask_shape[1]))
+
+                    for dn in range(images_loaded.shape[0]):
+                        if image_mask[dn]:
+                            images_loaded[dn] = denoise_wavelet(images_loaded[dn], sigma=denoise_sigma)
+
+                    images_loaded = images_loaded.reshape(image_input_shape)
+                    image_mask = image_mask.reshape(image_mask_shape)
+                    images_loaded[empty_mask] = 0
 
             # Copy values into output arrays
             if images is None:
