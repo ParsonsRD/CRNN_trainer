@@ -57,6 +57,8 @@ class RNNtrainer:
                                                     local_distance=local_distance)
 
             if denoise_sigma > 0.:
+                    image_mask = image_sum != 0
+                    image_mask = image_mask.astype("int")
                     empty_mask = (images_loaded == 0)
                     image_input_shape = images_loaded.shape
                     image_mask_shape = image_mask.shape
